@@ -198,56 +198,56 @@ print("Loaded sentences:", len(sentences))
 # training loop
 # --------------------------------------------------
 
-for epoch in range(EPOCHS):
+# for epoch in range(EPOCHS):
 
-    total = 0
+#     total = 0
 
-    for text in sentences:
+#     for text in sentences:
 
-        enc = tokenizer(
-            text,
-            return_tensors="pt",
-            truncation=True,
-            max_length=MAX_LEN
-        ).to(device)
+#         enc = tokenizer(
+#             text,
+#             return_tensors="pt",
+#             truncation=True,
+#             max_length=MAX_LEN
+#         ).to(device)
 
-        input_ids = enc["input_ids"]
+#         input_ids = enc["input_ids"]
 
-        # request hidden states so we can get last_hidden_state
-        outputs = model(
-            input_ids=input_ids,
-            labels=input_ids,
-            output_hidden_states=True
-        )
+#         # request hidden states so we can get last_hidden_state
+#         outputs = model(
+#             input_ids=input_ids,
+#             labels=input_ids,
+#             output_hidden_states=True
+#         )
 
-        lm_loss = outputs.loss
+#         lm_loss = outputs.loss
 
-        hidden = outputs.hidden_states[-1]     
-        sentence_vec = hidden.mean(dim=1)      
+#         hidden = outputs.hidden_states[-1]     
+#         sentence_vec = hidden.mean(dim=1)      
 
-        proj = torch.sum(sentence_vec * g_t, dim=1)   
-        proj_loss = (proj ** 2).mean()               
+#         proj = torch.sum(sentence_vec * g_t, dim=1)   
+#         proj_loss = (proj ** 2).mean()               
 
-        neutral = 1.0 if not contains_gender_word(text) else 0.0
-        neutral = torch.tensor(neutral, dtype=proj_loss.dtype, device=proj_loss.device)
+#         neutral = 1.0 if not contains_gender_word(text) else 0.0
+#         neutral = torch.tensor(neutral, dtype=proj_loss.dtype, device=proj_loss.device)
 
-        proj_loss = proj_loss * neutral
+#         proj_loss = proj_loss * neutral
 
-        loss = lm_loss + LAMBDA_PROJ * proj_loss
+#         loss = lm_loss + LAMBDA_PROJ * proj_loss
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
 
-        total += loss.item()
+#         total += loss.item()
 
-    print("epoch", epoch, "loss", total)
+#     print("epoch", epoch, "loss", total)
 
-# tokenizer = AutoTokenizer.from_pretrained(SAVE_DIR)
-# model = AutoModelForCausalLM.from_pretrained(
-#     SAVE_DIR,
-#     output_hidden_states=True
-# ).to(device)
+tokenizer = AutoTokenizer.from_pretrained(SAVE_DIR)
+model = AutoModelForCausalLM.from_pretrained(
+    SAVE_DIR,
+    output_hidden_states=True
+).to(device)
 # If model is already saved, load from SAVE_DIR
 
 # ----------------
