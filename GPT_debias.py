@@ -20,6 +20,7 @@ LAMBDA_PROJ = 0.8
 MAX_LEN = 64
 EPOCHS = 15
 TESTS_NUMBER = 5
+SAVE_DIR = "./debiased_gpt2(with neutral mask)"
 
 # --------------------------------------------------
 # gender direction
@@ -133,6 +134,15 @@ def embed_sentence(text):
 
     return vec.squeeze(0)
 
+def contains_gender_word(text):
+    gender_words = ["he", "she", "him", "her", "his", "hers", "himself", "herself", "man", "woman", "boy", "girl", "male", "female", "masculine", "feminine", "father", "mother", "dad", "mom", "son", "daughter", "brother", "sister", "uncle", "aunt", "nephew", "niece", "grandfather", "grandmother", "grandson", "granddaughter", "husband", "wife", "bride", "groom", "king", "queen", "prince", "princess", "duke", "duchess", "lord", "lady", "emperor", "empress", "actor", "actress", "waiter", "waitress", "steward", "stewardess", "host", "hostess", "hero", "heroine", "policeman", "policewoman", "fireman", "firewoman", "chairman", "chairwoman", "congressman", "congresswoman", "businessman", "businesswoman", "salesman", "saleswoman", "spokesman", "spokeswoman", "mailman", "milkman", "fisherman", "foreman", "cameraman", "ombudsman", "landlord", "landlady", "headmaster", "headmistress", "mr", "mrs", "miss", "ms", "sir", "madam", "gentleman", "lady", "boyfriend", "girlfriend", "fiance", "fiancee", "monk", "nun", "widower", "widow"]
+    sentence = text.lower().replace(".", " ").replace(".", " ").split(" ")
+    for w in sentence:
+        if w in gender_words:
+            return True
+    return False    
+    
+
 male_vecs = torch.stack([embed_sentence(s) for s in male_sentences])
 female_vecs = torch.stack([embed_sentence(s) for s in female_sentences])
 
@@ -203,18 +213,25 @@ for epoch in range(EPOCHS):
 
         input_ids = enc["input_ids"]
 
+        # request hidden states so we can get last_hidden_state
         outputs = model(
             input_ids=input_ids,
-            labels=input_ids
+            labels=input_ids,
+            output_hidden_states=True
         )
 
         lm_loss = outputs.loss
 
-        hidden = outputs.hidden_states[-1]
-        sentence_vec = hidden.mean(dim=1)
+        hidden = outputs.hidden_states[-1]     
+        sentence_vec = hidden.mean(dim=1)      
 
-        proj = torch.sum(sentence_vec * g_t, dim=1)
-        proj_loss = (proj ** 2).mean()
+        proj = torch.sum(sentence_vec * g_t, dim=1)   
+        proj_loss = (proj ** 2).mean()               
+
+        neutral = 1.0 if not contains_gender_word(text) else 0.0
+        neutral = torch.tensor(neutral, dtype=proj_loss.dtype, device=proj_loss.device)
+
+        proj_loss = proj_loss * neutral
 
         loss = lm_loss + LAMBDA_PROJ * proj_loss
 
@@ -225,6 +242,13 @@ for epoch in range(EPOCHS):
         total += loss.item()
 
     print("epoch", epoch, "loss", total)
+
+# tokenizer = AutoTokenizer.from_pretrained(SAVE_DIR)
+# model = AutoModelForCausalLM.from_pretrained(
+#     SAVE_DIR,
+#     output_hidden_states=True
+# ).to(device)
+# If model is already saved, load from SAVE_DIR
 
 # ----------------
 # Test
@@ -245,6 +269,6 @@ for _ in range(TESTS_NUMBER):
     print(tokenizer.decode(out[0]))
 
 
-model.save_pretrained("debiased_gpt2")
-tokenizer.save_pretrained("debiased_gpt2")
+model.save_pretrained(SAVE_DIR)
+tokenizer.save_pretrained(SAVE_DIR)
 
