@@ -1,4 +1,4 @@
-import torch
+import torch, random
 import numpy as np
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from torch.optim import AdamW
@@ -16,11 +16,12 @@ model = AutoModelForCausalLM.from_pretrained(
 
 optimizer = AdamW(model.parameters(), lr=2e-5)
 
-LAMBDA_PROJ = 0.8
+LAMBDA_PROJ = 1.0
 MAX_LEN = 64
-EPOCHS = 15
+EPOCHS = 10
 TESTS_NUMBER = 5
-SAVE_DIR = "./debiased_gpt2(with neutral mask)"
+SAVE_DIR = "./debiased_gpt2(updated)"
+NEUTRAL = 0.2
 
 # --------------------------------------------------
 # gender direction
@@ -142,14 +143,15 @@ def contains_gender_word(text):
             return True
     return False    
     
+def update_gender_axis():
+    male_vecs = torch.stack([embed_sentence(s) for s in male_sentences])
+    female_vecs = torch.stack([embed_sentence(s) for s in female_sentences])
 
-male_vecs = torch.stack([embed_sentence(s) for s in male_sentences])
-female_vecs = torch.stack([embed_sentence(s) for s in female_sentences])
+    g = male_vecs.mean(dim=0) - female_vecs.mean(dim=0)
+    g = g / torch.norm(g)
 
-g = male_vecs.mean(dim=0) - female_vecs.mean(dim=0)
-g = g / torch.norm(g)
-
-g_t = g.detach()
+    return g.detach()
+g_t = update_gender_axis()
 
 # ----------------
 # Test
@@ -198,56 +200,62 @@ print("Loaded sentences:", len(sentences))
 # training loop
 # --------------------------------------------------
 
-# for epoch in range(EPOCHS):
+for epoch in range(EPOCHS):
 
-#     total = 0
+    total = 0
+    random.shuffle(sentences)
 
-#     for text in sentences:
+    for text in sentences:
 
-#         enc = tokenizer(
-#             text,
-#             return_tensors="pt",
-#             truncation=True,
-#             max_length=MAX_LEN
-#         ).to(device)
+        enc = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=MAX_LEN
+        ).to(device)
 
-#         input_ids = enc["input_ids"]
+        input_ids = enc["input_ids"]
 
-#         # request hidden states so we can get last_hidden_state
-#         outputs = model(
-#             input_ids=input_ids,
-#             labels=input_ids,
-#             output_hidden_states=True
-#         )
+        # request hidden states so we can get last_hidden_state
+        outputs = model(
+            input_ids=input_ids,
+            labels=input_ids,
+            output_hidden_states=True
+        )
 
-#         lm_loss = outputs.loss
+        lm_loss = outputs.loss
 
-#         hidden = outputs.hidden_states[-1]     
-#         sentence_vec = hidden.mean(dim=1)      
+        hidden = outputs.hidden_states[-1]
+        mask = enc["attention_mask"].unsqueeze(-1)
+        sentence_vec = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+     
 
-#         proj = torch.sum(sentence_vec * g_t, dim=1)   
-#         proj_loss = (proj ** 2).mean()               
+        proj = torch.sum(sentence_vec * g_t, dim=1)   
+        proj_loss = (proj ** 2).mean()               
 
-#         neutral = 1.0 if not contains_gender_word(text) else 0.0
-#         neutral = torch.tensor(neutral, dtype=proj_loss.dtype, device=proj_loss.device)
+        neutral = 1.0 if not contains_gender_word(text) else NEUTRAL
+        neutral = torch.tensor(neutral, dtype=proj_loss.dtype, device=proj_loss.device)
 
-#         proj_loss = proj_loss * neutral
+        proj_loss = proj_loss * neutral
 
-#         loss = lm_loss + LAMBDA_PROJ * proj_loss
+        warmup = 3
+        lambda_proj = LAMBDA_PROJ * min(1, (epoch+1) / warmup)**2
+        loss = lm_loss + lambda_proj * proj_loss
 
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-#         total += loss.item()
+        total += loss.item()
 
-#     print("epoch", epoch, "loss", total)
+    print("epoch", epoch, "loss", total)
+    g_t = update_gender_axis()
 
-tokenizer = AutoTokenizer.from_pretrained(SAVE_DIR)
-model = AutoModelForCausalLM.from_pretrained(
-    SAVE_DIR,
-    output_hidden_states=True
-).to(device)
+# tokenizer = AutoTokenizer.from_pretrained(SAVE_DIR)
+# model = AutoModelForCausalLM.from_pretrained(
+#     SAVE_DIR,
+#     output_hidden_states=True
+# ).to(device)
 # If model is already saved, load from SAVE_DIR
 
 # ----------------

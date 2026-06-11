@@ -1,5 +1,4 @@
-# debias_distilbert_projection_selective.py
-
+# BookCorpus: A dataset consisting of 11,038 unpublished books (approx. 800 million words).
 import random
 import numpy as np
 import torch
@@ -24,11 +23,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
 
 MODEL_NAME = "distilbert-base-uncased"
+SAVE_DIR = "./debias_crows_model"
 
 MAX_LEN = 64
 BATCH_SIZE = 16
 LR = 2e-5
-EPOCHS = 3
+EPOCHS = 10
 
 LAMBDA_PROJ = 0.1
 
@@ -165,7 +165,33 @@ gender_words = {
     "boy","girl",
     "male","female",
     "husband","wife",
-    "brother","sister"
+    "brother","sister", 
+    "son","daughter",
+    "mr","mrs","ms",
+    "sir","madam","lady","gentleman",
+    "actor","actress",
+    "king","queen",
+    "Groom", "Bride", 
+    "Widower", "Widow", 
+    "Host", "Hostess", 
+    "Waiter", "Waitress", 
+    "Steward", "Stewardess", 
+    "Emperor", "Empress", 
+    "Duke", "Duchess", 
+    "Marquis", "Marchioness", 
+    "Earl", "Countess", 
+    "Viscount", "Viscountess", 
+    "Baron", "Baroness", "Knight", 
+    "Dame", "Godfather", "Godmother", 
+    "Grandfather", "Grandmother", "Grandson", 
+    "Granddaughter", "Stepfather", "Stepmother", 
+    "Stepson", "Stepdaughter", "Stepbrother", 
+    "Stepsister", "Sir", "Madam", "Lord", "Lady", 
+    "Rooster", "Hen", "Bull", "Cow", "Stallion", "Mare", 
+    "Ram", "Ewe", "Buck", "Doe", "Boar", "Sow", "Drake", "Duck", 
+    "Gander", "Goose", "Lion", "Lioness", "Tiger", "Tigress", "Leopard", 
+    "Leopardess", "Hero", "Heroine", "Host", "Hostess", "Monk", "Nun", 
+    "Priest", "Priestess", "Wizard", "Witch", "Warlock", "Witch"
 }
 
 def contains_gender_word(text):
@@ -298,31 +324,39 @@ optimizer = AdamW(model.parameters(), lr=LR)
 
 print("\nTraining...")
 
-for epoch in range(EPOCHS):
+# for epoch in range(EPOCHS):
 
-    model.train()
+#     model.train()
 
-    running = 0
+#     running = 0
 
-    for batch in loader:
+#     for batch in loader:
 
-        optimizer.zero_grad()
+#         optimizer.zero_grad()
 
-        loss = compute_loss(batch)
+#         loss = compute_loss(batch)
 
-        loss.backward()
+#         loss.backward()
 
-        optimizer.step()
+#         optimizer.step()
 
-        running += loss.item()
+#         running += loss.item()
 
-    print("Epoch", epoch + 1, "loss", running / len(loader))
+#     print("Epoch", epoch + 1, "loss", running / len(loader))
 
 # ============================================================
 # 12. Probe projections AFTER training
 # ============================================================
 
 print("\nSentence projections AFTER training:")
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    SAVE_DIR,
+    num_labels=2
+).to(device) 
+tokenizer = AutoTokenizer.from_pretrained(SAVE_DIR)
+# If model is already saved, load from SAVE_DIR
+
 
 for s in probe_sentences:
 
@@ -338,7 +372,7 @@ for s in probe_sentences:
 
 SAVE_DIR = "./debias_crows_model"
 
-model.save_pretrained(SAVE_DIR)
-tokenizer.save_pretrained(SAVE_DIR)
+# model.save_pretrained(SAVE_DIR)
+# tokenizer.save_pretrained(SAVE_DIR)
 
 print("\nModel saved to:", SAVE_DIR)
